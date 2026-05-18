@@ -83,4 +83,4 @@ export class TokenService {
   }
 }
 
-export const tokenService = new TokenService();
+export const tokenService = Object.freeze(new TokenService());

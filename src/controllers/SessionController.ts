@@ -144,6 +144,7 @@ export class SessionController {
       errorResponse(res, t(lang, 'session.revokeAllFailed'), 500);
     }
   }
+
 }
 
-export const sessionController = new SessionController();
+export const sessionController = Object.freeze(new SessionController());

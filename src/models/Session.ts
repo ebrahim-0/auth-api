@@ -37,6 +37,11 @@ const SessionSchema = new Schema<ISession>(
       required: true,
       index: true,
     },
+    provider: {
+      type: String,
+      enum: ['google', 'github'],
+      required: false,
+    },
   },
   {
     timestamps: true,

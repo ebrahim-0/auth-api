@@ -1,13 +1,29 @@
 import { Request } from 'express';
 import { Document, Types } from 'mongoose';
 
+export type OAuthProvider = 'google' | 'github';
+
+export interface IOAuthProvider extends Document {
+  _id: Types.ObjectId;
+  userId: string;
+  provider: OAuthProvider;
+  providerUserId: string;
+  email: string;
+  name?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface IUser extends Document {
   _id: Types.ObjectId;
   email: string;
-  password: string;
+  password?: string;
+  hasPassword: boolean;
   name: string;
-  username: string;
-  age: number;
+  username?: string;
+  age?: number;
   isVerified: boolean;
   verificationToken?: string;
   verificationTokenExpiry?: Date;
@@ -35,6 +51,7 @@ export interface ISession extends Document {
   userAgent: string;
   isActive: boolean;
   expiresAt: Date;
+  provider?: OAuthProvider;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -84,8 +101,8 @@ export interface LoginResponse {
     id: string;
     email: string;
     name: string;
-    username: string;
-    age: number;
+    username?: string;
+    age?: number;
     isVerified: boolean;
     twoFactorEnabled: boolean;
   };
@@ -103,6 +120,7 @@ export interface SessionInfo {
   expiresAt: Date;
   isActive: boolean;
   isCurrent: boolean;
+  provider?: OAuthProvider;
 }
 
 export interface EmailOptions {
@@ -161,4 +179,53 @@ export interface TwoFactorVerifyInput {
 
 export interface TwoFactorDisableInput {
   password: string;
+}
+
+export interface OAuthStateEntry {
+  provider: OAuthProvider;
+  createdAt: number;
+}
+
+export interface GoogleTokenResponse {
+  access_token: string;
+  refresh_token?: string;
+  id_token: string;
+  token_type: string;
+  expires_in: number;
+}
+
+export interface GoogleUserInfo {
+  id: string;
+  email: string;
+  verified_email: boolean;
+  name: string;
+  picture?: string;
+}
+
+export interface GitHubTokenResponse {
+  access_token: string;
+  refresh_token?: string;
+  token_type: string;
+  scope: string;
+}
+
+export interface GitHubUserInfo {
+  id: number;
+  login: string;
+  email: string | null;
+  name: string | null;
+}
+
+export interface GitHubEmail {
+  email: string;
+  primary: boolean;
+  verified: boolean;
+}
+
+export interface OAuthUserProfile {
+  providerUserId: string;
+  email: string;
+  name: string;
+  accessToken: string;
+  refreshToken?: string;
 }

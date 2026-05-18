@@ -3,6 +3,7 @@ import { connectDatabase, disconnectDatabase } from './config/database';
 import { env } from './config/env';
 import { logger } from './utils/logger';
 import { sessionService } from './services/SessionService';
+import { createWsServer } from './utils/wsServer';
 
 const app = createApp();
 
@@ -16,7 +17,10 @@ const startServer = async () => {
       logger.info(`Server is running on port ${env.PORT} in ${env.NODE_ENV} mode`);
       logger.info(`Health check: http://localhost:${env.PORT}/health`);
       logger.info(`📚 API Documentation: http://localhost:${env.PORT}/api-docs`);
+      logger.info(`WebSocket: ws://localhost:${env.PORT}/ws/session`);
     });
+
+    createWsServer(server);
 
     const cleanupInterval = setInterval(
       () => {

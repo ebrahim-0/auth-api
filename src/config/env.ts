@@ -29,6 +29,12 @@ interface EnvConfig {
   LOG_LEVEL: string;
   LOG_FILE: string;
   CORS_ORIGIN: string;
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
+  GOOGLE_REDIRECT_URI: string;
+  GITHUB_CLIENT_ID: string;
+  GITHUB_CLIENT_SECRET: string;
+  GITHUB_REDIRECT_URI: string;
 }
 
 const getEnv = (key: string, defaultValue?: string): string => {
@@ -80,4 +86,10 @@ export const env: EnvConfig = {
   LOG_LEVEL: getEnv('LOG_LEVEL', 'info'),
   LOG_FILE: getEnv('LOG_FILE', 'logs/app.log'),
   CORS_ORIGIN: getEnv('CORS_ORIGIN', 'http://localhost:3000'),
+  GOOGLE_CLIENT_ID: getEnv('GOOGLE_CLIENT_ID', ''),
+  GOOGLE_CLIENT_SECRET: getEnv('GOOGLE_CLIENT_SECRET', ''),
+  GOOGLE_REDIRECT_URI: getEnv('GOOGLE_REDIRECT_URI', 'http://localhost:5000/api/auth/oauth/google/callback'),
+  GITHUB_CLIENT_ID: getEnv('GITHUB_CLIENT_ID', ''),
+  GITHUB_CLIENT_SECRET: getEnv('GITHUB_CLIENT_SECRET', ''),
+  GITHUB_REDIRECT_URI: getEnv('GITHUB_REDIRECT_URI', 'http://localhost:5000/api/auth/oauth/github/callback'),
 };

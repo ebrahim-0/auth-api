@@ -29,6 +29,16 @@ export class UserRepository {
     return user.save();
   }
 
+  /** Creates a password-less user from an OAuth provider profile */
+  async createOAuthUser(email: string, name: string): Promise<IUser> {
+    const user = new User({
+      email: email.toLowerCase(),
+      name: name.trim(),
+      isVerified: true,
+    });
+    return user.save();
+  }
+
   async update(userId: string, updates: Partial<IUser>): Promise<IUser | null> {
     return User.findByIdAndUpdate(userId, updates, { new: true });
   }
@@ -124,4 +134,4 @@ export class UserRepository {
   }
 }
 
-export const userRepository = new UserRepository();
+export const userRepository = Object.freeze(new UserRepository());

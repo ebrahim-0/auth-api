@@ -1,14 +1,14 @@
-import { userRepository } from '../repositories/UserRepository';
-import { tokenRepository } from '../repositories/TokenRepository';
-import { sessionService } from './SessionService';
-import { tokenService } from './TokenService';
-import { emailService } from './EmailService';
-import { twoFactorService } from './TwoFactorService';
-import { IUser, LoginResponse, TwoFactorSetup } from '../types';
-import { logger } from '../utils/logger';
+import { userRepository } from "../repositories/UserRepository";
+import { tokenRepository } from "../repositories/TokenRepository";
+import { sessionService } from "./SessionService";
+import { tokenService } from "./TokenService";
+import { emailService } from "./EmailService";
+import { twoFactorService } from "./TwoFactorService";
+import { IUser, LoginResponse, TwoFactorSetup } from "../types";
+import { logger } from "../utils/logger";
 
 export class AuthService {
-  private toPublicUser(user: IUser): LoginResponse['user'] {
+  private toPublicUser(user: IUser): LoginResponse["user"] {
     return {
       id: user._id.toString(),
       email: user.email,
@@ -23,16 +23,18 @@ export class AuthService {
   async register(
     email: string,
     password: string,
-    profile: { name: string; username: string; age: number }
+    profile: { name: string; username: string; age: number },
   ): Promise<IUser> {
     const existingUser = await userRepository.findByEmail(email);
     if (existingUser) {
-      throw new Error('User with this email already exists');
+      throw new Error("User with this email already exists");
     }
 
-    const existingUsername = await userRepository.findByUsername(profile.username);
+    const existingUsername = await userRepository.findByUsername(
+      profile.username,
+    );
     if (existingUsername) {
-      throw new Error('Username is already taken');
+      throw new Error("Username is already taken");
     }
 
     const user = await userRepository.create(email, password, profile);
@@ -57,22 +59,24 @@ export class AuthService {
     email: string,
     password: string,
     ipAddress: string,
-    userAgent: string
+    userAgent: string,
   ): Promise<LoginResponse> {
     const user = await userRepository.findByEmail(email);
     if (!user) {
-      throw new Error('Invalid email or password');
+      throw new Error("Invalid email or password");
     }
 
     if (user.isLocked()) {
-      const lockTime = Math.ceil((user.lockUntil!.getTime() - Date.now()) / 60000);
+      const lockTime = Math.ceil(
+        (user.lockUntil!.getTime() - Date.now()) / 60000,
+      );
       throw new Error(`Account is locked. Try again in ${lockTime} minutes`);
     }
 
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
       await user.incrementLoginAttempts();
-      throw new Error('Invalid email or password');
+      throw new Error("Invalid email or password");
     }
 
     await user.resetLoginAttempts();
@@ -84,8 +88,8 @@ export class AuthService {
 
       return {
         user: this.toPublicUser(user),
-        tokens: { accessToken: '', refreshToken: '' },
-        sessionId: '',
+        tokens: { accessToken: "", refreshToken: "" },
+        sessionId: "",
         requiresTwoFactor: true,
         tempToken,
       };
@@ -94,7 +98,7 @@ export class AuthService {
     const { session, tokens, sessionId } = await sessionService.createSession(
       user._id.toString(),
       ipAddress,
-      userAgent
+      userAgent,
     );
 
     logger.info(`User logged in: ${email}`);
@@ -110,41 +114,47 @@ export class AuthService {
     tempToken: string,
     code: string,
     ipAddress: string,
-    userAgent: string
+    userAgent: string,
   ): Promise<LoginResponse> {
     const decoded = tokenService.verifyTempToken(tempToken);
     if (!decoded) {
-      throw new Error('Invalid or expired temporary token');
+      throw new Error("Invalid or expired temporary token");
     }
 
     const user = await userRepository.findById(decoded.userId);
     if (!user) {
-      throw new Error('User not found');
+      throw new Error("User not found");
     }
 
     const isSetupFlow = !user.twoFactorEnabled && !!user.twoFactorSecret;
     const isLoginFlow = user.twoFactorEnabled && !!user.twoFactorSecret;
 
     if (!isSetupFlow && !isLoginFlow) {
-      throw new Error('Two-factor authentication is not configured');
+      throw new Error("Two-factor authentication is not configured");
     }
 
-    const isValidToken = twoFactorService.verifyToken(user.twoFactorSecret!, code);
+    const isValidToken = twoFactorService.verifyToken(
+      user.twoFactorSecret!,
+      code,
+    );
 
     if (!isValidToken) {
       if (user.backupCodes && user.backupCodes.length > 0) {
-        const matchingCode = await twoFactorService.findMatchingBackupCode(code, user.backupCodes);
+        const matchingCode = await twoFactorService.findMatchingBackupCode(
+          code,
+          user.backupCodes,
+        );
 
         if (matchingCode) {
           await userRepository.useBackupCode(user._id.toString(), matchingCode);
           logger.info(`Backup code used for user: ${user.email}`);
         } else {
-          throw new Error('Invalid verification code');
+          throw new Error("Invalid verification code");
         }
       } else {
-        throw new Error('Invalid verification code');
+        throw new Error("Invalid verification code");
       }
-    }
+    } 
 
     // Setup flow: activate 2FA now that the user has verified their first code
     if (isSetupFlow) {
@@ -156,7 +166,7 @@ export class AuthService {
     const { session, tokens, sessionId } = await sessionService.createSession(
       user._id.toString(),
       ipAddress,
-      userAgent
+      userAgent,
     );
 
     logger.info(`2FA verified and user logged in: ${user.email}`);
@@ -181,12 +191,14 @@ export class AuthService {
   async verifyEmail(token: string): Promise<IUser> {
     const user = await userRepository.findByVerificationToken(token);
     if (!user) {
-      throw new Error('Invalid or expired verification token');
+      throw new Error("Invalid or expired verification token");
     }
 
-    const verifiedUser = await userRepository.markEmailAsVerified(user._id.toString());
+    const verifiedUser = await userRepository.markEmailAsVerified(
+      user._id.toString(),
+    );
     if (!verifiedUser) {
-      throw new Error('Failed to verify email');
+      throw new Error("Failed to verify email");
     }
 
     await emailService.sendWelcomeEmail(user.email);
@@ -199,11 +211,11 @@ export class AuthService {
   async resendVerificationEmail(email: string): Promise<void> {
     const user = await userRepository.findByEmail(email);
     if (!user) {
-      throw new Error('User not found');
+      throw new Error("User not found");
     }
 
     if (user.isVerified) {
-      throw new Error('Email is already verified');
+      throw new Error("Email is already verified");
     }
 
     const verificationToken = tokenService.generateVerificationToken();
@@ -231,22 +243,32 @@ export class AuthService {
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 1);
 
-    await tokenRepository.createPasswordReset(user._id.toString(), resetToken, expiresAt);
+    await tokenRepository.createPasswordReset(
+      user._id.toString(),
+      resetToken,
+      expiresAt,
+    );
 
     await emailService.sendPasswordResetEmail(email, resetToken);
 
     logger.info(`Password reset requested for: ${email}`);
   }
 
-  async confirmPasswordReset(token: string, newPassword: string): Promise<void> {
+  async confirmPasswordReset(
+    token: string,
+    newPassword: string,
+  ): Promise<void> {
     const passwordReset = await tokenRepository.findPasswordResetByToken(token);
     if (!passwordReset) {
-      throw new Error('Invalid or expired password reset token');
+      throw new Error("Invalid or expired password reset token");
     }
 
-    const user = await userRepository.updatePassword(passwordReset.userId, newPassword);
+    const user = await userRepository.updatePassword(
+      passwordReset.userId,
+      newPassword,
+    );
     if (!user) {
-      throw new Error('User not found');
+      throw new Error("User not found");
     }
 
     await tokenRepository.markPasswordResetAsUsed(passwordReset._id.toString());
@@ -260,20 +282,20 @@ export class AuthService {
     userId: string,
     currentSessionId: string,
     currentPassword: string,
-    newPassword: string
+    newPassword: string,
   ): Promise<void> {
     const user = await userRepository.findById(userId);
     if (!user) {
-      throw new Error('User not found');
+      throw new Error("User not found");
     }
 
     const isPasswordValid = await user.comparePassword(currentPassword);
     if (!isPasswordValid) {
-      throw new Error('Current password is incorrect');
+      throw new Error("Current password is incorrect");
     }
 
     if (currentPassword === newPassword) {
-      throw new Error('New password must be different from current password');
+      throw new Error("New password must be different from current password");
     }
 
     await userRepository.changePassword(userId, newPassword);
@@ -288,19 +310,25 @@ export class AuthService {
   async setup2FA(userId: string): Promise<TwoFactorSetup> {
     const user = await userRepository.findById(userId);
     if (!user) {
-      throw new Error('User not found');
+      throw new Error("User not found");
     }
 
     if (user.twoFactorEnabled) {
-      throw new Error('Two-factor authentication is already enabled');
+      throw new Error("Two-factor authentication is already enabled");
     }
 
     const setup = await twoFactorService.generateSecret(user.email);
 
-    const hashedBackupCodes = await twoFactorService.hashBackupCodes(setup.backupCodes);
+    const hashedBackupCodes = await twoFactorService.hashBackupCodes(
+      setup.backupCodes,
+    );
 
     // Store secret but keep twoFactorEnabled=false until user verifies
-    await userRepository.store2FASecret(userId, setup.secret, hashedBackupCodes);
+    await userRepository.store2FASecret(
+      userId,
+      setup.secret,
+      hashedBackupCodes,
+    );
 
     const tempToken = tokenService.generateTempToken(user._id.toString());
 
@@ -315,16 +343,16 @@ export class AuthService {
   async disable2FA(userId: string, password: string): Promise<void> {
     const user = await userRepository.findById(userId);
     if (!user) {
-      throw new Error('User not found');
+      throw new Error("User not found");
     }
 
     if (!user.twoFactorEnabled) {
-      throw new Error('Two-factor authentication is not enabled');
+      throw new Error("Two-factor authentication is not enabled");
     }
 
     const isPasswordValid = await user.comparePassword(password);
     if (!isPasswordValid) {
-      throw new Error('Invalid password');
+      throw new Error("Invalid password");
     }
 
     await userRepository.disable2FA(userId);
@@ -335,4 +363,4 @@ export class AuthService {
   }
 }
 
-export const authService = new AuthService();
+export const authService = Object.freeze(new AuthService());

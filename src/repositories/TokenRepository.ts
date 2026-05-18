@@ -100,4 +100,4 @@ export class TokenRepository {
   }
 }
 
-export const tokenRepository = new TokenRepository();
+export const tokenRepository = Object.freeze(new TokenRepository());

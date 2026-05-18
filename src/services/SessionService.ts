@@ -1,14 +1,16 @@
 import { sessionRepository } from '../repositories/SessionRepository';
 import { tokenRepository } from '../repositories/TokenRepository';
 import { tokenService } from './TokenService';
-import { ISession, SessionInfo, TokenPair } from '../types';
+import { wsManager, NewSessionPayload } from '../utils/wsManager';
+import { ISession, OAuthProvider, SessionInfo, TokenPair } from '../types';
 import { logger } from '../utils/logger';
 
 export class SessionService {
   async createSession(
     userId: string,
     ipAddress: string,
-    userAgent: string
+    userAgent: string,
+    provider?: OAuthProvider
   ): Promise<{ session: ISession; tokens: TokenPair; sessionId: string }> {
     const expiresAt = tokenService.getAccessTokenExpiry();
 
@@ -19,7 +21,8 @@ export class SessionService {
       'pending',
       ipAddress,
       userAgent,
-      expiresAt
+      expiresAt,
+      provider
     );
 
     const sessionId = placeholderSession._id.toString();
@@ -36,6 +39,15 @@ export class SessionService {
       sessionId,
       refreshTokenExpiry
     );
+
+    const newSessionPayload: NewSessionPayload = {
+      sessionId,
+      ipAddress,
+      userAgent,
+      createdAt: placeholderSession.createdAt,
+    };
+
+    wsManager.emitNewSession(userId, sessionId, newSessionPayload);
 
     logger.info(`Session created for user ${userId}`);
 
@@ -67,7 +79,6 @@ export class SessionService {
 
   async refreshSession(refreshToken: string): Promise<TokenPair | null> {
     const tokenRecord = await tokenRepository.findRefreshToken(refreshToken);
-    console.log("🚀 ~ SessionService ~ refreshSession ~ tokenRecord:", tokenRecord)
     if (!tokenRecord || tokenRecord.isRevoked) {
       logger.warn('Invalid or revoked refresh token');
       return null;
@@ -105,7 +116,6 @@ export class SessionService {
 
     logger.info(`Session refreshed for user ${session.userId}`);
 
-    console.log("🚀 ~ SessionService ~ refreshSession ~ newTokens:", newTokens)
     return newTokens;
   }
 
@@ -113,6 +123,7 @@ export class SessionService {
     const revoked = await sessionRepository.revokeSession(sessionId);
     if (revoked) {
       await tokenRepository.revokeRefreshTokensBySessionId(sessionId);
+      wsManager.emitSessionRevoked(sessionId);
       logger.info(`Session ${sessionId} revoked`);
     }
     return revoked;
@@ -121,6 +132,7 @@ export class SessionService {
   async revokeAllUserSessions(userId: string): Promise<number> {
     const count = await sessionRepository.revokeAllUserSessions(userId);
     await tokenRepository.revokeAllUserRefreshTokens(userId);
+    wsManager.emitUserSessionsRevoked(userId);
     logger.info(`All sessions revoked for user ${userId}`);
     return count;
   }
@@ -128,6 +140,7 @@ export class SessionService {
   async revokeAllUserSessionsExcept(userId: string, currentSessionId: string): Promise<number> {
     const count = await sessionRepository.revokeAllUserSessionsExcept(userId, currentSessionId);
     await tokenRepository.revokeRefreshTokensExceptSession(userId, currentSessionId);
+    wsManager.emitUserSessionsRevoked(userId, currentSessionId);
     logger.info(`All sessions except current revoked for user ${userId}`);
     return count;
   }
@@ -143,6 +156,7 @@ export class SessionService {
       expiresAt: session.expiresAt,
       isActive: session.isActive,
       isCurrent: session._id.toString() === currentSessionId,
+      ...(session.provider && { provider: session.provider }),
     }));
   }
 
@@ -157,4 +171,4 @@ export class SessionService {
   }
 }
 
-export const sessionService = new SessionService();
+export const sessionService = Object.freeze(new SessionService());
