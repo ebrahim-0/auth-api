@@ -72,4 +72,4 @@ export class TwoFactorService {
   }
 }
 
-export const twoFactorService = new TwoFactorService();
+export const twoFactorService = Object.freeze(new TwoFactorService());

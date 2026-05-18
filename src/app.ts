@@ -2,6 +2,9 @@ import express, { Application } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
+import { sanitize } from 'express-mongo-sanitize';
+import hpp from 'hpp';
 import swaggerUi from 'swagger-ui-express';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const swaggerUiDist = require('swagger-ui-dist') as { getAbsoluteFSPath: () => string };
@@ -10,15 +13,29 @@ import { swaggerSpec } from './config/swagger';
 import { generalLimiter } from './middlewares/rateLimit';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler';
 import { i18nMiddleware } from './middlewares/i18n';
+import { csrfProtect, setCsrfCookie } from './middlewares/csrf';
 import authRoutes from './routes/auth.routes';
 import sessionRoutes from './routes/session.routes';
+import oauthRoutes from './routes/oauth.routes';
 import { logger } from './utils/logger';
 
 export const createApp = (): Application => {
   const app = express();
 
   app.use(helmet({
-    contentSecurityPolicy: false, // disable content security policy
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"], // swagger-ui requires inline styles
+        imgSrc: ["'self'", "data:"],
+        connectSrc: ["'self'"],
+        fontSrc: ["'self'"],
+        objectSrc: ["'none'"],
+        frameAncestors: ["'none'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false, // swagger-ui loads cross-origin assets
   }));
 
   // Support comma-separated origins e.g. "https://app.vercel.app,http://localhost:3000"
@@ -36,8 +53,16 @@ export const createApp = (): Application => {
     })
   );
 
-  app.use(express.json({ limit: '10mb' })); // limit the size of the request body
-  app.use(express.urlencoded({ extended: true, limit: '10mb' })); // limit the size of the request body
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  app.use(cookieParser());
+  // Express 5 makes req.query read-only — sanitize body and params only
+  app.use((req, _res, next) => {
+    if (req.body) req.body = sanitize(req.body);
+    if (req.params) req.params = sanitize(req.params) as Record<string, string>;
+    next();
+  });
+  app.use(hpp()); // prevents HTTP parameter pollution attacks
   app.use(i18nMiddleware);
 
   // log the requests
@@ -103,8 +128,39 @@ export const createApp = (): Application => {
     customSiteTitle: 'Auth API Documentation',
   }));
 
-  app.use('/api/auth', authRoutes);
-  app.use('/api/session', sessionRoutes);
+  /**
+   * @swagger
+   * /api/csrf-token:
+   *   get:
+   *     tags:
+   *       - Security
+   *     summary: Get CSRF token
+   *     description: Issues a new CSRF token as a cookie and returns it in the response body. Call this before any state-mutating request and attach the token as X-CSRF-Token header.
+   *     responses:
+   *       200:
+   *         description: CSRF token issued
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 success:
+   *                   type: boolean
+   *                   example: true
+   *                 data:
+   *                   type: object
+   *                   properties:
+   *                     csrfToken:
+   *                       type: string
+   */
+  app.get('/api/csrf-token', (req, res) => {
+    const token = setCsrfCookie(res);
+    res.status(200).json({ success: true, data: { csrfToken: token } });
+  });
+
+  app.use('/api/auth', csrfProtect, authRoutes);
+  app.use('/api/auth/oauth', csrfProtect, oauthRoutes);
+  app.use('/api/session', csrfProtect, sessionRoutes);
 
   app.use(notFoundHandler);
 

@@ -58,10 +58,35 @@
     "unexpectedError": "حدث خطأ غير متوقع",
     "routeNotFound": "المسار {{method}} {{url}} غير موجود"
   },
+  "sse": {
+    "connected": "متصل بأحداث الجلسة في الوقت الفعلي",
+    "sessionRevoked": "تم إلغاء جلستك",
+    "newSession": "تم اكتشاف تسجيل دخول جديد على حسابك"
+  },
+  "oauth": {
+    "invalidState": "حالة OAuth غير صالحة أو منتهية الصلاحية. يرجى المحاولة مرة أخرى.",
+    "providerError": "أعاد مزود OAuth خطأ",
+    "noEmailFromProvider": "لم يُرجع مزود OAuth بريدًا إلكترونيًا مُتحقَّقًا منه",
+    "loginSuccess": "تم تسجيل الدخول بنجاح",
+    "registerSuccess": "تم إنشاء الحساب بنجاح عبر OAuth",
+    "linkSuccess": "تم ربط المزود بحسابك بنجاح",
+    "alreadyLinked": "حساب المزود هذا مرتبط بمستخدم آخر بالفعل",
+    "unlinkSuccess": "تم إلغاء ربط المزود بنجاح",
+    "unlinkFailed": "فشل إلغاء ربط المزود",
+    "cannotUnlinkLastMethod": "لا يمكن إلغاء الربط: لا توجد طريقة تسجيل دخول أخرى متاحة",
+    "providerNotLinked": "المزود غير مرتبط بهذا الحساب",
+    "providersSuccess": "تم استرجاع المزودين المرتبطين بنجاح",
+    "providersFailed": "فشل استرجاع المزودين المرتبطين",
+    "missingClientCredentials": "مزود OAuth غير مهيأ"
+  },
   "rateLimit": {
     "tooManyRequests": "طلبات كثيرة جداً، يرجى المحاولة لاحقاً",
     "tooManyAuthAttempts": "محاولات مصادقة كثيرة جداً، يرجى المحاولة بعد 15 دقيقة",
     "tooManyPasswordResets": "طلبات إعادة تعيين كلمة المرور كثيرة جداً، يرجى المحاولة بعد ساعة",
     "tooManyVerificationRequests": "طلبات التحقق كثيرة جداً، يرجى المحاولة بعد ساعة"
+  },
+  "csrf": {
+    "missingToken": "رمز CSRF مفقود. يرجى تحديث الصفحة والمحاولة مجدداً.",
+    "invalidToken": "رمز CSRF غير صالح. يرجى تحديث الصفحة والمحاولة مجدداً."
   }
 }

@@ -58,10 +58,35 @@
     "unexpectedError": "An unexpected error occurred",
     "routeNotFound": "Route {{method}} {{url}} not found"
   },
+  "sse": {
+    "connected": "Connected to real-time session events",
+    "sessionRevoked": "Your session has been revoked",
+    "newSession": "A new sign-in was detected on your account"
+  },
+  "oauth": {
+    "invalidState": "Invalid or expired OAuth state. Please try again.",
+    "providerError": "OAuth provider returned an error",
+    "noEmailFromProvider": "No verified email returned by the OAuth provider",
+    "loginSuccess": "Login successful",
+    "registerSuccess": "Account created successfully via OAuth",
+    "linkSuccess": "Provider linked to your account successfully",
+    "alreadyLinked": "This provider account is already linked to another user",
+    "unlinkSuccess": "Provider unlinked successfully",
+    "unlinkFailed": "Failed to unlink provider",
+    "cannotUnlinkLastMethod": "Cannot unlink: no other login method available",
+    "providerNotLinked": "Provider not linked to this account",
+    "providersSuccess": "Linked providers retrieved successfully",
+    "providersFailed": "Failed to retrieve linked providers",
+    "missingClientCredentials": "OAuth provider is not configured"
+  },
   "rateLimit": {
     "tooManyRequests": "Too many requests, please try again later",
     "tooManyAuthAttempts": "Too many authentication attempts, please try again after 15 minutes",
     "tooManyPasswordResets": "Too many password reset requests, please try again after 1 hour",
     "tooManyVerificationRequests": "Too many verification requests, please try again after 1 hour"
+  },
+  "csrf": {
+    "missingToken": "CSRF token missing. Please refresh and try again.",
+    "invalidToken": "Invalid CSRF token. Please refresh and try again."
   }
 }

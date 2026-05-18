@@ -263,4 +263,4 @@ export class AuthController {
   }
 }
 
-export const authController = new AuthController();
+export const authController = Object.freeze(new AuthController());

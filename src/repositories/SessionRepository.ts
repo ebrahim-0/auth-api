@@ -1,5 +1,5 @@
 import { Session } from '../models/Session';
-import { ISession } from '../types';
+import { ISession, OAuthProvider } from '../types';
 
 export class SessionRepository {
   async create(
@@ -8,7 +8,8 @@ export class SessionRepository {
     refreshToken: string,
     ipAddress: string,
     userAgent: string,
-    expiresAt: Date
+    expiresAt: Date,
+    provider?: OAuthProvider
   ): Promise<ISession> {
     const session = new Session({
       userId,
@@ -18,6 +19,7 @@ export class SessionRepository {
       userAgent,
       expiresAt,
       isActive: true,
+      ...(provider && { provider }),
     });
     return session.save();
   }
@@ -94,4 +96,4 @@ export class SessionRepository {
   }
 }
 
-export const sessionRepository = new SessionRepository();
+export const sessionRepository = Object.freeze(new SessionRepository());
