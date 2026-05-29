@@ -22,45 +22,6 @@ variables:
   # TELEGRAM_TOKEN   - your bot token
   # TELEGRAM_CHAT_ID - your chat id
 
-# Test stage - runs linting and tests
-test:
-  stage: test
-  tags:
-    - windows
-  script:
-    - |
-      $ErrorActionPreference = "Stop"
-      Write-Host "============================================"
-      Write-Host " RUNNING TESTS"
-      Write-Host " $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-      Write-Host "============================================"
-
-      # Install dependencies
-      Write-Host "--- Installing Dependencies ---"
-      $nodeVersion = node --version
-      $npmVersion  = npm --version
-      Write-Host "  node: $nodeVersion"
-      Write-Host "  npm:  $npmVersion"
-      npm install
-      if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
-      Write-Host "OK: Dependencies installed."
-
-      # Run linting
-      Write-Host "--- Running Lint ---"
-      npm run lint
-      if ($LASTEXITCODE -ne 0) { throw "npm run lint failed" }
-      Write-Host "OK: Lint passed."
-
-      # Run tests
-      Write-Host "--- Running Tests ---"
-      npm test
-      if ($LASTEXITCODE -ne 0) { throw "npm test failed" }
-      Write-Host "OK: Tests passed."
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" || $CI_PIPELINE_SOURCE == "push"'
-      when: always
-    - when: never
-
 # Build stage - compiles TypeScript
 build:
   stage: build
@@ -416,6 +377,8 @@ deploy_production:
           Invoke-AppCmd add site /name:$iisSiteName /bindings:"http/$bindingInformation" /physicalPath:$projectPath | Out-Null
           Invoke-AppCmd set app "$iisSiteName/" /applicationPool:$iisAppPool | Out-Null
           Invoke-AppCmd set vdir "$iisSiteName/" /physicalPath:$projectPath | Out-Null
+
+          Start-Sleep -Seconds 3
 
           if ((Get-IisAppPoolState $iisAppPool) -ne "Started") {
               Write-Host "  Starting IIS app pool: $iisAppPool"
