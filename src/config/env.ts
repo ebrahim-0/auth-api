@@ -40,7 +40,7 @@ interface EnvConfig {
 const getEnv = (key: string, defaultValue?: string): string => {
   const value = process.env[key];
   if (value === undefined && defaultValue === undefined) {
-    throw new Error(`Environment variable ${key} is required but not set`);
+    throw new Error(`Environment variable ${key} is required but not set and shown as ${value}`);
   }
   return (value ?? defaultValue!).trim();
 };
@@ -48,7 +48,7 @@ const getEnv = (key: string, defaultValue?: string): string => {
 const getEnvNumber = (key: string, defaultValue?: number): number => {
   const value = process.env[key];
   if (!value && defaultValue === undefined) {
-    throw new Error(`Environment variable ${key} is required but not set`);
+    throw new Error(`Environment variable ${key} is required but not set and shown as ${value}`);
   }
   return value ? parseInt(value, 10) : defaultValue!;
 };
