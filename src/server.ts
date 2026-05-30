@@ -17,18 +17,32 @@ const startServer = async () => {
   try {
     await connectDatabase();
 
-    server = app.listen(env.PORT, () => {
-      logger.info(
-        `Server is running on port ${env.PORT} in ${env.NODE_ENV} mode`,
-      );
+    // Check if running under IIS/iisnode
+    const isUnderIIS = process.env.IISNODE_VERSION !== undefined;
+
+    if (!isUnderIIS) {
+      // Normal Node.js execution - create HTTP server
+      server = app.listen(env.PORT, () => {
+        logger.info(
+          `Server is running on port ${env.PORT} in ${env.NODE_ENV} mode`,
+        );
+        logger.info(`Health check: http://localhost:${env.PORT}/health`);
+        logger.info(
+          `📚 API Documentation: http://localhost:${env.PORT}/api-docs`,
+        );
+        logger.info(`WebSocket: ws://localhost:${env.PORT}/ws/session`);
+      });
+
+      createWsServer(server);
+    } else {
+      // Running under IIS - iisnode handles the HTTP server
+      logger.info(`Server initialized under IIS/iisnode (${env.NODE_ENV} mode)`);
       logger.info(`Health check: http://localhost:${env.PORT}/health`);
       logger.info(
         `📚 API Documentation: http://localhost:${env.PORT}/api-docs`,
       );
-      logger.info(`WebSocket: ws://localhost:${env.PORT}/ws/session`);
-    });
-
-    createWsServer(server);
+      // WebSocket not available under IIS/iisnode
+    }
 
     const cleanupInterval = setInterval(
       () => {
