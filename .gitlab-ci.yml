@@ -1,5 +1,4 @@
 stages:
-  - test
   - build
   - deploy
 
@@ -19,10 +18,13 @@ variables:
   NGROK_EXE: "C:/ngrok/ngrok.exe"
   BOT_PATH: "C:/telegram-app-manager"
   # GitLab CI/CD Variables needed:
-  # TELEGRAM_TOKEN   - your bot token
-  # TELEGRAM_CHAT_ID - your chat id
+  # TELEGRAM_TOKEN    - your bot token
+  # TELEGRAM_CHAT_ID  - your chat id
+  # NGROK_AUTHTOKEN   - your ngrok auth token
 
-# Build stage - compiles TypeScript
+# ─────────────────────────────────────────────
+# BUILD STAGE — compile TypeScript
+# ─────────────────────────────────────────────
 build:
   stage: build
   tags:
@@ -35,13 +37,11 @@ build:
       Write-Host " $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
       Write-Host "============================================"
 
-      # Install dependencies
       Write-Host "--- Installing Dependencies ---"
       npm install
       if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
       Write-Host "OK: Dependencies installed."
 
-      # Build application
       Write-Host "--- Building Application ---"
       $buildStart = Get-Date
       npm run build
@@ -53,7 +53,9 @@ build:
       when: always
     - when: never
 
-# Deploy stage - deploys to IIS
+# ─────────────────────────────────────────────
+# DEPLOY STAGE — deploy to IIS
+# ─────────────────────────────────────────────
 deploy_production:
   stage: deploy
   only:
@@ -64,9 +66,11 @@ deploy_production:
     - |
       $ErrorActionPreference = "Stop"
       $scriptSuccess = $false
-      $errorDetails = $null
+      $errorDetails  = $null
 
-      # --- Function to send Telegram notification ---
+      # ──────────────────────────────────────────────────────────────────
+      # HELPER: Send Telegram notification
+      # ──────────────────────────────────────────────────────────────────
       function Send-TelegramMessage {
           param(
               [string]$Title,
@@ -81,8 +85,6 @@ deploy_production:
           $commit  = $env:CI_COMMIT_SHORT_SHA
           $project = $env:PROJECT_NAME
           $jobUrl  = "$env:CI_PROJECT_URL/-/jobs/$jobId"
-
-          $telegramUrl = "https://api.telegram.org/bot" + $token + "/sendMessage"
 
           $lines = @(
               $Title,
@@ -100,9 +102,9 @@ deploy_production:
               $lines += @("``````")
           }
 
-          $text = $lines -join "`n"
+          $text     = $lines -join "`n"
           $textJson = $text.Replace('\', '\\').Replace('"', '\"')
-
+          $telegramUrl = "https://api.telegram.org/bot" + $token + "/sendMessage"
           $json = "{""chat_id"":""$chatId"",""text"":""$textJson"",""reply_markup"":{""inline_keyboard"":[[{""text"":""📄 Open Job"",""url"":""$jobUrl""}]]}}"
 
           try {
@@ -114,62 +116,163 @@ deploy_production:
           }
       }
 
+      # ──────────────────────────────────────────────────────────────────
+      # HELPER: Inject .env into IIS App Pool environmentVariables
+      # ──────────────────────────────────────────────────────────────────
+      function Set-IisAppPoolEnvVars {
+          param(
+              [string]$AppPoolName,
+              [string]$EnvFilePath
+          )
+
+          Write-Host ""
+          Write-Host "--- Injecting .env into IIS App Pool: $AppPoolName ---"
+
+          if (!(Test-Path $EnvFilePath)) {
+              throw ".env file not found at: $EnvFilePath"
+          }
+
+          # Load Microsoft.Web.Administration
+          $mwaPath = "$env:windir\system32\inetsrv\Microsoft.Web.Administration.dll"
+          if (!(Test-Path $mwaPath)) {
+              throw "Microsoft.Web.Administration.dll not found. Ensure IIS Management Tools are installed."
+          }
+          Add-Type -Path $mwaPath
+
+          # Parse .env — skip blank lines and comments
+          $envLines = Get-Content $EnvFilePath | Where-Object {
+              $_ -match '^\s*[^#\s]' -and $_ -match '='
+          }
+
+          $serverManager = New-Object Microsoft.Web.Administration.ServerManager
+          $pool = $serverManager.ApplicationPools[$AppPoolName]
+
+          # Create app pool if it doesn't exist yet
+          if ($null -eq $pool) {
+              Write-Host "  App pool '$AppPoolName' not found — creating it for env injection."
+              $pool = $serverManager.ApplicationPools.Add($AppPoolName)
+          }
+
+          $envVarsCollection = $pool.GetChildElement("environmentVariables").GetCollection()
+
+          $added   = 0
+          $updated = 0
+
+          foreach ($line in $envLines) {
+              # Split only on the FIRST '=' so values containing '=' are preserved
+              $eqIndex = $line.IndexOf('=')
+              if ($eqIndex -lt 1) { continue }
+
+              $key   = $line.Substring(0, $eqIndex).Trim()
+              $value = $line.Substring($eqIndex + 1).Trim().Trim('"').Trim("'")
+
+              if ([string]::IsNullOrWhiteSpace($key)) { continue }
+
+              # Remove existing entry to prevent duplicates
+              $existing = $envVarsCollection | Where-Object { $_["name"] -eq $key }
+              if ($existing) {
+                  $envVarsCollection.Remove($existing)
+                  $updated++
+                  Write-Host "  Updated: $key"
+              } else {
+                  $added++
+                  Write-Host "  Added:   $key"
+              }
+
+              $entry          = $envVarsCollection.CreateElement("add")
+              $entry["name"]  = $key
+              $entry["value"] = $value
+              $envVarsCollection.Add($entry) | Out-Null
+          }
+
+          $serverManager.CommitChanges()
+          Write-Host "OK: Env vars injected — $added added, $updated updated."
+      }
+
+      # ──────────────────────────────────────────────────────────────────
+      # HELPER: appcmd wrappers
+      # ──────────────────────────────────────────────────────────────────
+      $appcmd = Join-Path $env:windir "System32\inetsrv\appcmd.exe"
+
+      function Invoke-AppCmd {
+          param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+          $output = & $appcmd @Arguments 2>&1
+          if ($LASTEXITCODE -ne 0) { throw "appcmd failed: $($Arguments -join ' ')`n$output" }
+          return $output
+      }
+
+      function Test-IisSite     { param([string]$Name); $o = & $appcmd list site     $Name 2>$null; return ($LASTEXITCODE -eq 0 -and $o) }
+      function Test-IisAppPool  { param([string]$Name); $o = & $appcmd list apppool  $Name 2>$null; return ($LASTEXITCODE -eq 0 -and $o) }
+      function Get-IisSiteState    { param([string]$Name); return (& $appcmd list site    $Name /text:state 2>$null) }
+      function Get-IisAppPoolState { param([string]$Name); return (& $appcmd list apppool $Name /text:state 2>$null) }
+
+      # ══════════════════════════════════════════════════════════════════
       try {
           Write-Host "============================================"
           Write-Host " DEPLOYMENT STARTED"
           Write-Host " $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
           Write-Host "============================================"
 
-          # --- Send deployment started notification ---
+          # ── Notify: started ─────────────────────────────────────────
           Write-Host ""
           Write-Host "--- Sending Deployment Started Notification ---"
           Send-TelegramMessage -Title "🚀 Deployment Started" -Message "Deployment is now running..."
-
           Write-Host "OK: Deployment started notification sent."
 
-          # --- Validate variables ---
+          # ── Validate variables ───────────────────────────────────────
           Write-Host ""
-          Write-Host "--- Validating variables ---"
-          if (-not $env:REPO_URL)         { throw "REPO_URL variable is not set" }
-          if (-not $env:APP_PORT)         { throw "APP_PORT variable is not set" }
+          Write-Host "--- Validating Variables ---"
+          if (-not $env:REPO_URL)          { throw "REPO_URL variable is not set" }
+          if (-not $env:APP_PORT)          { throw "APP_PORT variable is not set" }
           if ($env:APP_PORT -notmatch '^\d+$') { throw "APP_PORT must be a number" }
-          if ($env:APP_PORT -eq "6000") { throw "APP_PORT 6000 is blocked by Chrome/Edge as ERR_UNSAFE_PORT. Use 6080, 8080, or another safe port." }
-          if (-not $env:IIS_SITE_NAME)    { $env:IIS_SITE_NAME = $env:PROJECT_NAME }
-          if (-not $env:IIS_APP_POOL)     { $env:IIS_APP_POOL = $env:IIS_SITE_NAME }
-          if (-not $env:TELEGRAM_TOKEN)   { throw "TELEGRAM_TOKEN variable is not set" }
-          if (-not $env:TELEGRAM_CHAT_ID) { throw "TELEGRAM_CHAT_ID variable is not set" }
-          if (-not $env:BOT_PATH)         { throw "BOT_PATH variable is not set" }
+          if ($env:APP_PORT -eq "6000")    { throw "APP_PORT 6000 is blocked by Chrome/Edge (ERR_UNSAFE_PORT). Use 6080, 8080, or another safe port." }
+          if (-not $env:IIS_SITE_NAME)     { $env:IIS_SITE_NAME = $env:PROJECT_NAME }
+          if (-not $env:IIS_APP_POOL)      { $env:IIS_APP_POOL  = $env:IIS_SITE_NAME }
+          if (-not $env:TELEGRAM_TOKEN)    { throw "TELEGRAM_TOKEN variable is not set" }
+          if (-not $env:TELEGRAM_CHAT_ID)  { throw "TELEGRAM_CHAT_ID variable is not set" }
+          if (-not $env:BOT_PATH)          { throw "BOT_PATH variable is not set" }
+
+          $iisSiteName        = $env:IIS_SITE_NAME
+          $iisAppPool         = $env:IIS_APP_POOL
+          $appPort            = [int]$env:APP_PORT
+          $iisHostName        = if ($env:IIS_HOST_NAME) { $env:IIS_HOST_NAME.Trim() } else { "" }
+          $bindingInformation = "*:${appPort}:${iisHostName}"
+          $projectPath        = Join-Path $env:DEPLOY_PATH $env:PROJECT_NAME
+          $backupRoot         = Join-Path $env:DEPLOY_PATH "backups"
+
           Write-Host "  Project:     $env:PROJECT_NAME"
           Write-Host "  Repo URL:    $env:REPO_URL"
           Write-Host "  Deploy Path: $env:DEPLOY_PATH"
-          Write-Host "  App Port:    $env:APP_PORT"
-          Write-Host "  IIS Site:    $env:IIS_SITE_NAME"
-          Write-Host "  IIS Pool:    $env:IIS_APP_POOL"
+          Write-Host "  App Port:    $appPort"
+          Write-Host "  IIS Site:    $iisSiteName"
+          Write-Host "  IIS Pool:    $iisAppPool"
           Write-Host "  Bot Path:    $env:BOT_PATH"
           Write-Host "  Job ID:      $env:CI_JOB_ID"
           Write-Host "  Commit:      $env:CI_COMMIT_SHORT_SHA"
           Write-Host "  Branch:      $env:CI_COMMIT_BRANCH"
           Write-Host "OK: All variables present."
 
-          # --- Validate bot path and register-app.js exist ---
+          # ── Validate appcmd ──────────────────────────────────────────
+          if (!(Test-Path $appcmd)) {
+              throw "appcmd.exe not found. Install IIS Management Scripts and Tools on this runner."
+          }
+
+          # ── Validate bot path ────────────────────────────────────────
           Write-Host ""
           Write-Host "--- Validating Bot Path ---"
           $registerScript = Join-Path $env:BOT_PATH "register-app.js"
           if (!(Test-Path $env:BOT_PATH)) {
-              Write-Host "  WARNING: BOT_PATH not found at: $env:BOT_PATH"
-              Write-Host "  App registration will be skipped."
+              Write-Host "  WARNING: BOT_PATH not found at: $env:BOT_PATH — registration will be skipped."
               $botAvailable = $false
           } elseif (!(Test-Path $registerScript)) {
-              Write-Host "  WARNING: register-app.js not found at: $registerScript"
-              Write-Host "  Make sure the telegram-app-manager bot is installed at BOT_PATH."
+              Write-Host "  WARNING: register-app.js not found at: $registerScript — registration will be skipped."
               $botAvailable = $false
           } else {
               Write-Host "  Bot path OK: $env:BOT_PATH"
-              Write-Host "  register-app.js found: $registerScript"
               $botAvailable = $true
           }
 
-          # --- SSH setup ---
+          # ── SSH setup ────────────────────────────────────────────────
           Write-Host ""
           Write-Host "--- SSH Setup ---"
           $ssh     = $env:SSH_EXE
@@ -191,18 +294,15 @@ deploy_production:
               Write-Host "  gitlab.com already in known_hosts."
           }
 
-          # --- Git identity ---
+          # ── Git identity ─────────────────────────────────────────────
           Write-Host ""
           Write-Host "--- Git Identity ---"
           git config --global user.name  $env:GIT_USER_NAME
           git config --global user.email $env:GIT_USER_EMAIL
-          $gitName    = git config --global user.name
-          $gitEmail   = git config --global user.email
-          $gitVersion = git --version
-          Write-Host "  Git version: $gitVersion"
-          Write-Host "  User name:   $gitName"
-          Write-Host "  User email:  $gitEmail"
           $env:GIT_SSH_COMMAND = """$ssh"" -i ""$keyPath"" -o StrictHostKeyChecking=no"
+          Write-Host "  Git version: $(git --version)"
+          Write-Host "  User name:   $(git config --global user.name)"
+          Write-Host "  User email:  $(git config --global user.email)"
           Write-Host "  SSH command: $env:GIT_SSH_COMMAND"
 
           Write-Host ""
@@ -212,85 +312,36 @@ deploy_production:
           if ($sshTest -match "Permission denied") { throw "GitLab SSH auth failed" }
           Write-Host "OK: SSH connection successful."
 
-          $projectPath = Join-Path $env:DEPLOY_PATH $env:PROJECT_NAME
-          $backupRoot  = Join-Path $env:DEPLOY_PATH "backups"
-
-          # --- IIS setup ---
+          # ── Stop IIS before pulling ──────────────────────────────────
           Write-Host ""
           Write-Host "--- Preparing IIS ---"
-          $iisSiteName = $env:IIS_SITE_NAME
-          $iisAppPool = $env:IIS_APP_POOL
-          $appPort = [int]$env:APP_PORT
-          $iisHostName = if ($env:IIS_HOST_NAME) { $env:IIS_HOST_NAME.Trim() } else { "" }
-          $bindingInformation = "*:${appPort}:${iisHostName}"
-          $appcmd = Join-Path $env:windir "System32\inetsrv\appcmd.exe"
-
-          if (!(Test-Path $appcmd)) {
-              throw "appcmd.exe not found. Install IIS Management Scripts and Tools on this runner/server."
-          }
-
-          function Invoke-AppCmd {
-              param(
-                  [Parameter(ValueFromRemainingArguments = $true)]
-                  [string[]]$Arguments
-              )
-
-              $output = & $appcmd @Arguments 2>&1
-              if ($LASTEXITCODE -ne 0) {
-                  throw "appcmd failed: $($Arguments -join ' ')`n$output"
-              }
-              return $output
-          }
-
-          function Test-IisSite {
-              param([string]$Name)
-              $output = & $appcmd list site $Name 2>$null
-              return ($LASTEXITCODE -eq 0 -and $output)
-          }
-
-          function Test-IisAppPool {
-              param([string]$Name)
-              $output = & $appcmd list apppool $Name 2>$null
-              return ($LASTEXITCODE -eq 0 -and $output)
-          }
-
-          function Get-IisSiteState {
-              param([string]$Name)
-              return (& $appcmd list site $Name /text:state 2>$null)
-          }
-
-          function Get-IisAppPoolState {
-              param([string]$Name)
-              return (& $appcmd list apppool $Name /text:state 2>$null)
-          }
-
           if (Test-IisSite $iisSiteName) {
               Write-Host "  Stopping IIS website: $iisSiteName"
               & $appcmd stop site /site.name:$iisSiteName 2>$null | Out-Null
           } else {
-              Write-Host "  IIS website does not exist yet; it will be created after build."
+              Write-Host "  IIS website does not exist yet; will be created after build."
           }
-
           if (Test-IisAppPool $iisAppPool) {
               Write-Host "  Stopping IIS app pool: $iisAppPool"
               & $appcmd stop apppool /apppool.name:$iisAppPool 2>$null | Out-Null
               Start-Sleep -Seconds 3
           } else {
-              Write-Host "  IIS app pool does not exist yet; it will be created after build."
+              Write-Host "  IIS app pool does not exist yet; will be created after build."
           }
 
-          # --- Backup ---
-          # - make backup
+          # ── Inject .env → IIS App Pool env vars ─────────────────────
+          # Runs BEFORE clone/build so variables are committed to
+          # applicationHost.config and ready when iisnode first starts.
+          Set-IisAppPoolEnvVars -AppPoolName $iisAppPool -EnvFilePath $env:ENV_SOURCE
 
-          # --- Clone or Pull ---
+          # ── Clone or pull ────────────────────────────────────────────
           Write-Host ""
           Write-Host "--- Clone or Pull Repository ---"
-          Write-Host "  URL: $env:REPO_URL"
+          Write-Host "  URL:         $env:REPO_URL"
           Write-Host "  Destination: $projectPath"
 
-          # Check if directory exists
           if (Test-Path $projectPath) {
-              Write-Host "  Directory exists, syncing to origin/main..."
+              Write-Host "  Directory exists — syncing to origin/main..."
               Set-Location $projectPath
               git remote set-url origin "$env:REPO_URL"
               if ($LASTEXITCODE -ne 0) { throw "git remote set-url failed" }
@@ -298,65 +349,59 @@ deploy_production:
               if ($LASTEXITCODE -ne 0) { throw "git fetch failed" }
               git reset --hard origin/main
               if ($LASTEXITCODE -ne 0) { throw "git reset failed" }
-              $syncCommit = git log -1 --format="%H %s"
-              Write-Host "OK: Synced. Latest commit: $syncCommit"
+              Write-Host "OK: Synced. Latest commit: $(git log -1 --format='%H %s')"
           } else {
-              Write-Host "  Directory does not exist, cloning repository..."
+              Write-Host "  Directory does not exist — cloning..."
               Set-Location $env:DEPLOY_PATH
               git clone "$env:REPO_URL" "$env:PROJECT_NAME"
               if ($LASTEXITCODE -ne 0) { throw "git clone failed" }
-              $projectPath = Join-Path $env:DEPLOY_PATH $env:PROJECT_NAME
-              $cloneCommit = git -C "$projectPath" log -1 --format="%H %s"
-              Write-Host "OK: Cloned. Latest commit: $cloneCommit"
+              Write-Host "OK: Cloned. Latest commit: $(git -C "$projectPath" log -1 --format='%H %s')"
           }
 
-          # --- Env ---
+          # ── Copy .env file ───────────────────────────────────────────
           Write-Host ""
           Write-Host "--- Copying .env ---"
           Write-Host "  From: $env:ENV_SOURCE"
           Write-Host "  To:   $projectPath\.env"
-          Copy-Item "$env:ENV_SOURCE" "$projectPath\.env"
+          Copy-Item "$env:ENV_SOURCE" "$projectPath\.env" -Force
           Write-Host "OK: .env copied."
 
-          # --- Deploy Application ---
+          # ── Install & build ──────────────────────────────────────────
           Write-Host ""
           Write-Host "--- Deploying Application ---"
-
           Set-Location $projectPath
 
-          # Install dependencies
           Write-Host "--- Installing Dependencies ---"
-          $nodeVersion = node --version
-          $npmVersion  = npm --version
-          Write-Host "  node: $nodeVersion"
-          Write-Host "  npm:  $npmVersion"
+          Write-Host "  node: $(node --version)"
+          Write-Host "  npm:  $(npm --version)"
           npm install
           if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
           Write-Host "OK: Dependencies installed."
 
-          # Build application (TypeScript)
-          Write-Host "--- Building Application ---"
+          Write-Host "--- Building Application (TypeScript) ---"
           $buildStart = Get-Date
           npm run build
           if ($LASTEXITCODE -ne 0) { throw "npm run build failed" }
           $buildTime = [math]::Round(((Get-Date) - $buildStart).TotalSeconds, 1)
           Write-Host "OK: Build complete in ${buildTime}s."
 
-          # Start with IIS
+          # ── Configure & start IIS ────────────────────────────────────
+          Write-Host ""
           Write-Host "--- Starting Application with IIS ---"
 
           # Ensure logs directory exists
           if (!(Test-Path "logs")) {
               New-Item -ItemType Directory -Path "logs" -Force | Out-Null
-              Write-Host "  Created logs directory"
+              Write-Host "  Created logs directory."
           }
 
-          # Clean up the old PM2 process if this server still has one from a previous deploy.
+          # Remove legacy PM2 process if present
           if (Get-Command pm2 -ErrorAction SilentlyContinue) {
-              Write-Host "  Cleaning up legacy PM2 process for $env:PROJECT_NAME if present..."
+              Write-Host "  Cleaning up legacy PM2 process for $env:PROJECT_NAME..."
               & pm2 delete "$env:PROJECT_NAME" 2>$null
           }
 
+          # Create app pool if missing
           if (!(Test-IisAppPool $iisAppPool)) {
               Write-Host "  Creating IIS app pool: $iisAppPool"
               Invoke-AppCmd add apppool /name:$iisAppPool | Out-Null
@@ -364,8 +409,13 @@ deploy_production:
               Write-Host "  IIS app pool exists: $iisAppPool"
           }
 
-          Invoke-AppCmd set apppool /apppool.name:$iisAppPool /managedRuntimeVersion: /processModel.identityType:ApplicationPoolIdentity /autoStart:true | Out-Null
+          # Configure app pool (no managed runtime = node)
+          Invoke-AppCmd set apppool /apppool.name:$iisAppPool `
+              /managedRuntimeVersion: `
+              /processModel.identityType:ApplicationPoolIdentity `
+              /autoStart:true | Out-Null
 
+          # Recreate site with correct binding
           if (Test-IisSite $iisSiteName) {
               Write-Host "  Recreating IIS website with binding: http/$bindingInformation"
               & $appcmd stop site /site.name:$iisSiteName 2>$null | Out-Null
@@ -375,8 +425,8 @@ deploy_production:
           }
 
           Invoke-AppCmd add site /name:$iisSiteName /bindings:"http/$bindingInformation" /physicalPath:$projectPath | Out-Null
-          Invoke-AppCmd set app "$iisSiteName/" /applicationPool:$iisAppPool | Out-Null
-          Invoke-AppCmd set vdir "$iisSiteName/" /physicalPath:$projectPath | Out-Null
+          Invoke-AppCmd set app  "$iisSiteName/"  /applicationPool:$iisAppPool | Out-Null
+          Invoke-AppCmd set vdir "$iisSiteName/"  /physicalPath:$projectPath   | Out-Null
 
           Start-Sleep -Seconds 3
 
@@ -384,24 +434,25 @@ deploy_production:
               Write-Host "  Starting IIS app pool: $iisAppPool"
               Invoke-AppCmd start apppool /apppool.name:$iisAppPool | Out-Null
           } else {
-              Write-Host "  IIS app pool already started: $iisAppPool"
+              Write-Host "  IIS app pool already started."
           }
 
           if ((Get-IisSiteState $iisSiteName) -ne "Started") {
               Write-Host "  Starting IIS website: $iisSiteName"
               Invoke-AppCmd start site /site.name:$iisSiteName | Out-Null
           } else {
-              Write-Host "  IIS website already started: $iisSiteName"
+              Write-Host "  IIS website already started."
           }
 
-          Write-Host "  Waiting for IIS/Express startup..."
+          Write-Host "  Waiting for IIS/iisnode startup..."
           Start-Sleep -Seconds 8
 
-          $healthUrl = "http://127.0.0.1:$appPort/"
+          # ── Health check ─────────────────────────────────────────────
+          $healthUrl       = "http://127.0.0.1:$appPort/"
           $serverHealthUrl = "http://192.168.1.27:$appPort/"
           Write-Host ""
-          Write-Host "  Health check: $healthUrl"
-          Write-Host "  Server Health check: $serverHealthUrl"
+          Write-Host "  Health check:        $healthUrl"
+          Write-Host "  Server health check: $serverHealthUrl"
           try {
               $response = Invoke-WebRequest -UseBasicParsing -Uri $healthUrl -Method Head -TimeoutSec 30
               Write-Host "  Status: $($response.StatusCode) $($response.StatusDescription)"
@@ -410,21 +461,21 @@ deploy_production:
               }
           } catch {
               if (Test-Path "logs") {
-                  Write-Host "  Recent IIS/node logs:"
+                  Write-Host "  Recent logs:"
                   Get-ChildItem "logs" -Filter "*.log" -ErrorAction SilentlyContinue |
                     Sort-Object LastWriteTime -Descending |
                     Select-Object -First 3 |
                     ForEach-Object {
                         Write-Host "  Log: $($_.FullName)"
-                        Get-Content $_.FullName -Tail 20 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "    $_" }
+                        Get-Content $_.FullName -Tail 20 -ErrorAction SilentlyContinue |
+                          ForEach-Object { Write-Host "    $_" }
                     }
               }
               throw "IIS health check failed: $($_.Exception.Message)"
           }
+          Write-Host "OK: Application running on port $appPort."
 
-          Write-Host "OK: Application started with IIS on port $appPort."
-
-          # --- Register app in bot database ---
+          # ── Register app in bot DB ───────────────────────────────────
           Write-Host ""
           Write-Host "--- Registering App in Bot Database ---"
           if ($botAvailable) {
@@ -433,7 +484,7 @@ deploy_production:
                 --port "$env:APP_PORT" `
                 --path "$projectPath"
               if ($LASTEXITCODE -ne 0) {
-                  Write-Host "  WARNING: App registration failed (non-fatal). Bot DB may be out of sync."
+                  Write-Host "  WARNING: App registration failed (non-fatal)."
               } else {
                   Write-Host "OK: App registered in bot database."
               }
@@ -441,46 +492,27 @@ deploy_production:
               Write-Host "  Skipping — bot not available at $env:BOT_PATH"
           }
 
-          # --- Starting ngrok ---
+          # ── Start ngrok ──────────────────────────────────────────────
           Write-Host ""
           Write-Host "--- Starting ngrok ---"
 
-          if (-not $env:NGROK_AUTHTOKEN) {
-              throw "NGROK_AUTHTOKEN variable is not set"
-          }
+          if (-not $env:NGROK_AUTHTOKEN) { throw "NGROK_AUTHTOKEN variable is not set" }
 
-          $ngrok = if (Test-Path $env:NGROK_EXE) {
-              $env:NGROK_EXE
-          } else {
-              "ngrok"
-          }
-
-          if (!(Test-Path $ngrok)) {
-              throw "ngrok.exe not found at $ngrok"
-          }
-
+          $ngrok = if (Test-Path $env:NGROK_EXE) { $env:NGROK_EXE } else { "ngrok" }
+          if (!(Test-Path $ngrok)) { throw "ngrok.exe not found at $ngrok" }
           Write-Host "  ngrok path: $ngrok"
 
-          # --- Configure ngrok auth token ---
           Write-Host "  Configuring ngrok auth token..."
-
           & "$ngrok" config add-authtoken $env:NGROK_AUTHTOKEN
-
-          if ($LASTEXITCODE -ne 0) {
-              throw "Failed to configure ngrok authtoken"
-          }
-
+          if ($LASTEXITCODE -ne 0) { throw "Failed to configure ngrok authtoken" }
           Write-Host "OK: ngrok auth token configured."
 
-          # --- Start ngrok tunnel ---
-          Write-Host "  Starting ngrok tunnel on port $env:APP_PORT..."
-
-          $domain = "unavailable"
+          $domain       = "unavailable"
           $ngrokSuccess = $false
 
           try {
               $ngrokProcess = Start-Process `
-                  -FilePath $ngrok `
+                  -FilePath    $ngrok `
                   -ArgumentList "http", "$env:APP_PORT" `
                   -PassThru `
                   -WindowStyle Hidden `
@@ -489,45 +521,33 @@ deploy_production:
               Start-Sleep -Seconds 8
 
               if ($ngrokProcess.HasExited) {
-                  Write-Host "  WARNING: ngrok process exited immediately (non-fatal). Skipping domain."
+                  Write-Host "  WARNING: ngrok exited immediately (non-fatal)."
               } else {
                   Write-Host "  ngrok PID: $($ngrokProcess.Id)"
                   $ngrokSuccess = $true
 
-                  # --- Fetch public URL ---
                   Write-Host "  Fetching tunnel URL..."
-
                   for ($i = 1; $i -le 10; $i++) {
                       try {
-                          $tunnels = Invoke-RestMethod `
-                              -Uri "http://127.0.0.1:4040/api/tunnels" `
-                              -ErrorAction Stop
-
-                          $tunnel = $tunnels.tunnels |
+                          $tunnels = Invoke-RestMethod -Uri "http://127.0.0.1:4040/api/tunnels" -ErrorAction Stop
+                          $tunnel  = $tunnels.tunnels |
                               Where-Object { $_.public_url -like "https://*" } |
                               Select-Object -First 1
-
-                          if ($tunnel) {
-                              $domain = $tunnel.public_url
-                              break
-                          }
-
-                          Write-Host "  Tunnel not ready yet... retry $i/10"
-                      }
-                      catch {
+                          if ($tunnel) { $domain = $tunnel.public_url; break }
+                          Write-Host "  Not ready yet... retry $i/10"
+                      } catch {
                           Write-Host "  Waiting for ngrok API... retry $i/10"
                       }
-
                       Start-Sleep -Seconds 3
                   }
               }
-          }
-          catch {
+          } catch {
               Write-Host "  WARNING: ngrok startup failed (non-fatal): $_"
           }
 
           Write-Host "OK: Domain: $domain"
-          # --- Update bot database with ngrok domain ---
+
+          # ── Update bot DB with ngrok domain ─────────────────────────
           Write-Host ""
           Write-Host "--- Updating Bot Database with Domain ---"
           if ($domain -ne "unavailable" -and $botAvailable) {
@@ -545,11 +565,11 @@ deploy_production:
               Write-Host "  Skipping (domain=$domain, botAvailable=$botAvailable)."
           }
 
-          # --- Final success notification ---
+          # ── Notify: success ──────────────────────────────────────────
           Write-Host ""
           Write-Host "--- Sending Success Notification ---"
           if ($domain -ne "unavailable") {
-              Send-TelegramMessage -Title "✅ Deployment Successful!" -Message "App is now running on port $env:APP_PORT. Domain: $domain"
+              Send-TelegramMessage -Title "✅ Deployment Successful!" -Message "App is running on port $env:APP_PORT.`nDomain: $domain"
           } else {
               Send-TelegramMessage -Title "⚠️ Deployment Complete (No Domain)" -Message "App is running on port $env:APP_PORT, but ngrok domain was unavailable."
           }
@@ -572,14 +592,12 @@ deploy_production:
           Write-Host "============================================"
           Write-Host "Error: $errorDetails"
 
-          # Send failure notification
           Write-Host ""
           Write-Host "--- Sending Failure Notification ---"
           $errorSnippet = if ($errorDetails.Length -gt 1000) { $errorDetails.Substring(0, 1000) + "..." } else { $errorDetails }
           Send-TelegramMessage -Title "❌ Deployment Failed" -Message $errorSnippet -IsError
           Write-Host "OK: Failure notification sent."
 
-          # Re-throw the error to fail the job
           throw $_
       }
       finally {
