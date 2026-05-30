@@ -398,8 +398,10 @@ deploy_production:
           Start-Sleep -Seconds 8
 
           $healthUrl = "http://127.0.0.1:$appPort/"
+          $serverHealthUrl = "http://192.168.1.27:$appPort/"
           Write-Host ""
           Write-Host "  Health check: $healthUrl"
+          Write-Host "  Server Health check: $serverHealthUrl"
           try {
               $response = Invoke-WebRequest -UseBasicParsing -Uri $healthUrl -Method Head -TimeoutSec 30
               Write-Host "  Status: $($response.StatusCode) $($response.StatusDescription)"
@@ -473,51 +475,55 @@ deploy_production:
           # --- Start ngrok tunnel ---
           Write-Host "  Starting ngrok tunnel on port $env:APP_PORT..."
 
-          $ngrokProcess = Start-Process `
-              -FilePath $ngrok `
-              -ArgumentList "http", "$env:APP_PORT" `
-              -PassThru `
-              -WindowStyle Hidden
+          $domain = "unavailable"
+          $ngrokSuccess = $false
 
-          Start-Sleep -Seconds 8
+          try {
+              $ngrokProcess = Start-Process `
+                  -FilePath $ngrok `
+                  -ArgumentList "http", "$env:APP_PORT" `
+                  -PassThru `
+                  -WindowStyle Hidden `
+                  -ErrorAction SilentlyContinue
 
-          if ($ngrokProcess.HasExited) {
-              throw "ngrok exited immediately"
-          }
+              Start-Sleep -Seconds 8
 
-          Write-Host "  ngrok PID: $($ngrokProcess.Id)"
+              if ($ngrokProcess.HasExited) {
+                  Write-Host "  WARNING: ngrok process exited immediately (non-fatal). Skipping domain."
+              } else {
+                  Write-Host "  ngrok PID: $($ngrokProcess.Id)"
+                  $ngrokSuccess = $true
 
-          # --- Fetch public URL ---
-          Write-Host "  Fetching tunnel URL..."
+                  # --- Fetch public URL ---
+                  Write-Host "  Fetching tunnel URL..."
 
-          $domain = $null
+                  for ($i = 1; $i -le 10; $i++) {
+                      try {
+                          $tunnels = Invoke-RestMethod `
+                              -Uri "http://127.0.0.1:4040/api/tunnels" `
+                              -ErrorAction Stop
 
-          for ($i = 1; $i -le 10; $i++) {
-              try {
-                  $tunnels = Invoke-RestMethod `
-                      -Uri "http://127.0.0.1:4040/api/tunnels" `
-                      -ErrorAction Stop
+                          $tunnel = $tunnels.tunnels |
+                              Where-Object { $_.public_url -like "https://*" } |
+                              Select-Object -First 1
 
-                  $tunnel = $tunnels.tunnels |
-                      Where-Object { $_.public_url -like "https://*" } |
-                      Select-Object -First 1
+                          if ($tunnel) {
+                              $domain = $tunnel.public_url
+                              break
+                          }
 
-                  if ($tunnel) {
-                      $domain = $tunnel.public_url
-                      break
+                          Write-Host "  Tunnel not ready yet... retry $i/10"
+                      }
+                      catch {
+                          Write-Host "  Waiting for ngrok API... retry $i/10"
+                      }
+
+                      Start-Sleep -Seconds 3
                   }
-
-                  Write-Host "  Tunnel not ready yet... retry $i/10"
               }
-              catch {
-                  Write-Host "  Waiting for ngrok API... retry $i/10"
-              }
-
-              Start-Sleep -Seconds 3
           }
-
-          if (-not $domain) {
-              $domain = "unavailable"
+          catch {
+              Write-Host "  WARNING: ngrok startup failed (non-fatal): $_"
           }
 
           Write-Host "OK: Domain: $domain"
