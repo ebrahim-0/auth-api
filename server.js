@@ -6,6 +6,19 @@ const path = require('path');
 const fs = require('fs');
 
 try {
+  // Explicitly load .env from project root so iisnode has runtime variables
+  const envPath = path.join(__dirname, '.env');
+  if (fs.existsSync(envPath)) {
+    try {
+      require('dotenv').config({ path: envPath });
+      console.log(`Loaded environment from ${envPath}`);
+    } catch (e) {
+      console.warn('Failed to load .env via dotenv:', e);
+    }
+  } else {
+    console.warn(`.env not found at ${envPath}; relying on system environment variables`);
+  }
+
   // Prefer compiled server in dist/
   const distServer = path.join(__dirname, 'dist', 'server.js');
   if (fs.existsSync(distServer)) {
