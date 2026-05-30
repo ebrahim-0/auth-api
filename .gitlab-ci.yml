@@ -10,7 +10,7 @@ variables:
   ENV_SOURCE: "C:/envs/auth-api/.env"
   GIT_USER_NAME: "gitlab-runner"
   GIT_USER_EMAIL: "runner@auth-api.com"
-  APP_PORT: "5000"
+  APP_PORT: "5080"
   IIS_SITE_NAME: "auth-api"
   IIS_APP_POOL: "auth-api"
   IIS_HOST_NAME: ""
