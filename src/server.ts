@@ -17,31 +17,25 @@ const startServer = async () => {
   try {
     await connectDatabase();
 
-    // Check if running under IIS/iisnode
     const isUnderIIS = process.env.IISNODE_VERSION !== undefined;
+    const listenTarget = process.env.PORT || env.PORT;
+
+    server = app.listen(listenTarget, () => {
+      logger.info(
+        `Server is running on ${listenTarget} in ${env.NODE_ENV} mode`,
+      );
+      logger.info(`Health check: http://localhost:${env.PORT}/health`);
+      logger.info(`API Documentation: http://localhost:${env.PORT}/api-docs`);
+
+      if (isUnderIIS) {
+        logger.info("Running under IIS/iisnode; WebSocket server is disabled");
+      } else {
+        logger.info(`WebSocket: ws://localhost:${env.PORT}/ws/session`);
+      }
+    });
 
     if (!isUnderIIS) {
-      // Normal Node.js execution - create HTTP server
-      server = app.listen(env.PORT, () => {
-        logger.info(
-          `Server is running on port ${env.PORT} in ${env.NODE_ENV} mode`,
-        );
-        logger.info(`Health check: http://localhost:${env.PORT}/health`);
-        logger.info(
-          `📚 API Documentation: http://localhost:${env.PORT}/api-docs`,
-        );
-        logger.info(`WebSocket: ws://localhost:${env.PORT}/ws/session`);
-      });
-
       createWsServer(server);
-    } else {
-      // Running under IIS - iisnode handles the HTTP server
-      logger.info(`Server initialized under IIS/iisnode (${env.NODE_ENV} mode)`);
-      logger.info(`Health check: http://localhost:${env.PORT}/health`);
-      logger.info(
-        `📚 API Documentation: http://localhost:${env.PORT}/api-docs`,
-      );
-      // WebSocket not available under IIS/iisnode
     }
 
     const cleanupInterval = setInterval(
