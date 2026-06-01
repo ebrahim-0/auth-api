@@ -32,9 +32,11 @@ const startServer = async () => {
       }
     });
 
-    if (!isUnderIIS) {
-      createWsServer(server);
-    }
+    // if (!isUnderIIS) {
+    //   createWsServer(server);
+    // }
+
+    createWsServer(server);
 
     connectDatabase().catch((error) => {
       logger.error("Database connection failed after server startup:", error);
