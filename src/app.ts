@@ -24,18 +24,24 @@ export const createApp = (): Application => {
 
   app.use(helmet({
     contentSecurityPolicy: {
+      useDefaults: false,
       directives: {
         defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
         scriptSrc: ["'self'"],
+        scriptSrcAttr: ["'none'"],
         styleSrc: ["'self'", "'unsafe-inline'"], // swagger-ui requires inline styles
         imgSrc: ["'self'", "data:"],
         connectSrc: ["'self'"],
-        fontSrc: ["'self'"],
+        fontSrc: ["'self'", "data:"],
         objectSrc: ["'none'"],
         frameAncestors: ["'none'"],
       },
     },
+    crossOriginOpenerPolicy: false,
     crossOriginEmbedderPolicy: false, // swagger-ui loads cross-origin assets
+    originAgentCluster: false,
   }));
 
   // Support comma-separated origins e.g. "https://app.vercel.app,http://localhost:3000"
