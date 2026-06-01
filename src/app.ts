@@ -78,6 +78,16 @@ export const createApp = (): Application => {
 
   app.use(generalLimiter);
 
+  app.get('/', (req, res) => {
+    res.status(200).json({
+      success: true,
+      message: 'Auth API is running',
+      health: '/health',
+      docs: '/api-docs',
+      timestamp: new Date().toLocaleString(),
+    });
+  });
+
   /**
    * @swagger
    * /health:

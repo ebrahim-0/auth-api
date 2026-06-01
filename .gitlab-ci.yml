@@ -332,7 +332,7 @@ deploy_production:
           # ── Inject .env → IIS App Pool env vars ─────────────────────
           # Runs BEFORE clone/build so variables are committed to
           # applicationHost.config and ready when iisnode first starts.
-          #   Set-IisAppPoolEnvVars -AppPoolName $iisAppPool -EnvFilePath $env:ENV_SOURCE
+          Set-IisAppPoolEnvVars -AppPoolName $iisAppPool -EnvFilePath $env:ENV_SOURCE
 
           # ── Clone or pull ────────────────────────────────────────────
           Write-Host ""
@@ -448,13 +448,13 @@ deploy_production:
           Start-Sleep -Seconds 8
 
           # ── Health check ─────────────────────────────────────────────
-          $healthUrl       = "http://127.0.0.1:$appPort/"
-          $serverHealthUrl = "http://192.168.1.27:$appPort/"
+          $healthUrl       = "http://127.0.0.1:$appPort/health"
+          $serverHealthUrl = "http://192.168.1.27:$appPort/health"
           Write-Host ""
           Write-Host "  Health check:        $healthUrl"
           Write-Host "  Server health check: $serverHealthUrl"
           try {
-              $response = Invoke-WebRequest -UseBasicParsing -Uri $healthUrl -Method Head -TimeoutSec 30
+              $response = Invoke-WebRequest -UseBasicParsing -Uri $healthUrl -Method Get -TimeoutSec 30
               Write-Host "  Status: $($response.StatusCode) $($response.StatusDescription)"
               if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 400) {
                   throw "Unexpected IIS health status: $($response.StatusCode)"
