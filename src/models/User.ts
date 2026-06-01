@@ -47,7 +47,6 @@ const UserSchema = new Schema<IUser>(
     },
     verificationToken: {
       type: String,
-      index: true,
     },
     verificationTokenExpiry: {
       type: Date,
@@ -71,7 +70,6 @@ const UserSchema = new Schema<IUser>(
     },
     passwordResetToken: {
       type: String,
-      index: true,
     },
     passwordResetExpiry: {
       type: Date,

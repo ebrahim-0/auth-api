@@ -14,11 +14,7 @@ export const connectDatabase = async (): Promise<void> => {
     logger.info(`MongoDB connected successfully to ${env.NODE_ENV} database`);
   } catch (error) {
     logger.error('MongoDB connection error:', error);
-    // In serverless environments, process.exit kills the container — throw instead
-    if (process.env.VERCEL) {
-      throw error;
-    }
-    process.exit(1);
+    throw error;
   }
 };
 

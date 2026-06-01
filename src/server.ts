@@ -15,8 +15,6 @@ let server: any;
 
 const startServer = async () => {
   try {
-    await connectDatabase();
-
     const isUnderIIS = process.env.IISNODE_VERSION !== undefined;
     const listenTarget = process.env.PORT || env.PORT;
 
@@ -37,6 +35,10 @@ const startServer = async () => {
     if (!isUnderIIS) {
       createWsServer(server);
     }
+
+    connectDatabase().catch((error) => {
+      logger.error("Database connection failed after server startup:", error);
+    });
 
     const cleanupInterval = setInterval(
       () => {
