@@ -1,14 +1,13 @@
-import crypto from 'crypto';
-import { OAuthProvider, OAuthStateEntry } from '../types';
+import crypto from "crypto";
+import { OAuthProvider, OAuthStateEntry } from "../types";
 
 const STATE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
-/** In-memory CSRF state store for OAuth flows */
 class OAuthStateStore {
   private store = new Map<string, OAuthStateEntry>();
 
   generate(provider: OAuthProvider): string {
-    const state = crypto.randomBytes(32).toString('hex');
+    const state = crypto.randomBytes(32).toString("hex");
     this.store.set(state, { provider, createdAt: Date.now() });
     return state;
   }

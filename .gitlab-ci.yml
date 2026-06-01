@@ -332,7 +332,7 @@ deploy_production:
           # ── Inject .env → IIS App Pool env vars ─────────────────────
           # Runs BEFORE clone/build so variables are committed to
           # applicationHost.config and ready when iisnode first starts.
-          Set-IisAppPoolEnvVars -AppPoolName $iisAppPool -EnvFilePath $env:ENV_SOURCE
+          #   Set-IisAppPoolEnvVars -AppPoolName $iisAppPool -EnvFilePath $env:ENV_SOURCE
 
           # ── Clone or pull ────────────────────────────────────────────
           Write-Host ""
