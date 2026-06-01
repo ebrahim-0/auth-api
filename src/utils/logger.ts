@@ -3,7 +3,8 @@ import { env } from '../config/env';
 import path from 'path';
 import fs from 'fs';
 
-const isServerless = env.NODE_ENV === 'production' || !!process.env.VERCEL;
+const isManagedHost =
+  env.NODE_ENV === 'production' || !!process.env.VERCEL || !!process.env.IISNODE_VERSION;
 
 const logFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
@@ -28,7 +29,7 @@ const transports: winston.transport[] = [
   new winston.transports.Console({ format: consoleFormat }),
 ];
 
-if (!isServerless) {
+if (!isManagedHost) {
   // Each server start gets its own log folder: logs/2026-03-25_18-30-00/
   const startedAt = new Date()
     .toISOString()
@@ -39,14 +40,18 @@ if (!isServerless) {
   const baseLogDir = path.dirname(env.LOG_FILE);
   const sessionLogDir = path.join(baseLogDir, startedAt);
 
-  if (!fs.existsSync(sessionLogDir)) {
-    fs.mkdirSync(sessionLogDir, { recursive: true });
-  }
+  try {
+    if (!fs.existsSync(sessionLogDir)) {
+      fs.mkdirSync(sessionLogDir, { recursive: true });
+    }
 
-  transports.push(
-    new winston.transports.File({ filename: path.join(sessionLogDir, 'app.log'), level: 'info' }),
-    new winston.transports.File({ filename: path.join(sessionLogDir, 'error.log'), level: 'error' })
-  );
+    transports.push(
+      new winston.transports.File({ filename: path.join(sessionLogDir, 'app.log'), level: 'info' }),
+      new winston.transports.File({ filename: path.join(sessionLogDir, 'error.log'), level: 'error' })
+    );
+  } catch (error) {
+    console.warn('File logging disabled because the log directory is not writable:', error);
+  }
 }
 
 export const logger = winston.createLogger({
