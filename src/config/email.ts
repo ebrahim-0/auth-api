@@ -36,4 +36,4 @@ class EmailConfig {
   }
 }
 
-export const emailConfig = Object.freeze(new EmailConfig());
+export const emailConfig = new EmailConfig();
