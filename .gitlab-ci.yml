@@ -449,9 +449,12 @@ deploy_production:
 
           # ── Health check ─────────────────────────────────────────────
           $healthUrl       = "http://127.0.0.1:$appPort/health"
-          $serverHealthUrl = "http://192.168.1.27:$appPort/health"
+          $serverHost      = if ($env:SERVER_IP) { $env:SERVER_IP.Trim() } else { "127.0.0.1" }
+          $serverUrl       = "http://${serverHost}:$appPort/"
+          $serverHealthUrl = "http://${serverHost}:$appPort/health"
           Write-Host ""
           Write-Host "  Health check:        $healthUrl"
+          Write-Host "  Server URL:          $serverUrl"
           Write-Host "  Server health check: $serverHealthUrl"
           try {
               $response = Invoke-WebRequest -UseBasicParsing -Uri $healthUrl -Method Get -TimeoutSec 30
@@ -569,9 +572,9 @@ deploy_production:
           Write-Host ""
           Write-Host "--- Sending Success Notification ---"
           if ($domain -ne "unavailable") {
-              Send-TelegramMessage -Title "✅ Deployment Successful!" -Message "App is running on port $env:APP_PORT.`nDomain: $domain"
+              Send-TelegramMessage -Title "✅ Deployment Successful!" -Message "App is running on port $env:APP_PORT.`nServer: $serverUrl`nHealth: $serverHealthUrl`nDomain: $domain"
           } else {
-              Send-TelegramMessage -Title "⚠️ Deployment Complete (No Domain)" -Message "App is running on port $env:APP_PORT, but ngrok domain was unavailable."
+              Send-TelegramMessage -Title "⚠️ Deployment Complete (No Domain)" -Message "App is running on port $env:APP_PORT.`nServer: $serverUrl`nHealth: $serverHealthUrl`nngrok domain was unavailable."
           }
           Write-Host "OK: Success notification sent."
 
