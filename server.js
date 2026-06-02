@@ -1,6 +1,6 @@
 // Express/TS app entrypoint wrapper used by IIS/iisnode
-// Ensure default port is 5000 unless overridden by CI/IIS
-process.env.PORT = process.env.PORT || '5000';
+// Ensure default port is 5080 unless overridden by CI/IIS
+process.env.PORT = process.env.PORT || '5080';
 
 const path = require('path');
 const fs = require('fs');
